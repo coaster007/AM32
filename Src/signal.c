@@ -13,7 +13,8 @@
 #include "serial_telemetry.h"
 #include "sounds.h"
 #include "targets.h"
-int max_servo_deviation = 250;
+/*int max_servo_deviation = 250;*/
+int max_servo_deviation = 40;
 int servorawinput;
 uint16_t smallestnumber = 20000;
 uint8_t enter_calibration_count = 0;
