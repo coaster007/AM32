@@ -118,6 +118,7 @@ void computeServoInput()
 
 void transfercomplete()
 {
+#ifndef MCU_F031   // f031 does not use software EXTI event to process dshot
     if (armed && dshot_telemetry) {
         if (out_put) {
             receiveDshotDma();
@@ -129,6 +130,7 @@ void transfercomplete()
             return;
         }
     }
+#endif
     if (inputSet == 0) {
         detectInput();
         receiveDshotDma();
@@ -175,6 +177,7 @@ void transfercomplete()
                                                                     // will be adjusted be main loop
                 zero_input_count++;
             } else {
+              if(!eepromBuffer.disable_stick_calibration){
                 zero_input_count = 0;
                 if (adjusted_input > 1500) {
                     if (getAbsDif(adjusted_input, last_input) > 50) {
@@ -190,6 +193,7 @@ void transfercomplete()
                     }
                     last_input = adjusted_input;
                 }
+              }
             }
         }
     }
