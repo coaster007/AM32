@@ -355,7 +355,6 @@ int32_t input_override = 0;
 int16_t use_current_limit_adjust = 2000;
 char use_current_limit = 0;
 int32_t stall_protection_adjust = 0;
-
 uint32_t MCU_Id = 0;
 uint32_t REV_Id = 0;
 
@@ -616,20 +615,12 @@ void loadEEpromSettings()
     }
 
     if (eepromBuffer.pwm_frequency < 145 && eepromBuffer.pwm_frequency > 7) {
-        if (eepromBuffer.pwm_frequency < 145 && eepromBuffer.pwm_frequency > 23) {
-            TIMER1_MAX_ARR = map(eepromBuffer.pwm_frequency, 24, 144, TIM1_AUTORELOAD, TIM1_AUTORELOAD / 6);
-        }
-        if (eepromBuffer.pwm_frequency < 24 && eepromBuffer.pwm_frequency > 11) {
-            TIMER1_MAX_ARR = map(eepromBuffer.pwm_frequency, 12, 24, TIM1_AUTORELOAD * 2, TIM1_AUTORELOAD);
-        }
-        if (eepromBuffer.pwm_frequency < 12 && eepromBuffer.pwm_frequency > 7) {
-            TIMER1_MAX_ARR = map(eepromBuffer.pwm_frequency, 7, 16, TIM1_AUTORELOAD * 3,
-                TIM1_AUTORELOAD / 2 * 3);
-        }
-        SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
+      int divider = eepromBuffer.pwm_frequency * 100 / 6;
+      TIMER1_MAX_ARR =   TIM1_AUTORELOAD * 400 / divider;
+      SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
     } else {
-        tim1_arr = TIM1_AUTORELOAD;
-        SET_AUTO_RELOAD_PWM(tim1_arr);
+      tim1_arr = TIM1_AUTORELOAD;
+      SET_AUTO_RELOAD_PWM(tim1_arr);
     }
     if(eepromBuffer.minimum_duty_cycle < 51 && eepromBuffer.minimum_duty_cycle > 0){
     minimum_duty_cycle = eepromBuffer.minimum_duty_cycle * 10;
@@ -1013,8 +1004,46 @@ void setInput()
                 }
             }
         }
-
         if (dshot) {
+                     if (eepromBuffer.rc_car_reverse) {
+                         if (newinput > 1047) {
+                         if (forward == eepromBuffer.dir_reversed) {
+                         adjusted_input = 0;
+                         prop_brake_active = 1;
+                         if (return_to_center) {
+                             forward = 1 - eepromBuffer.dir_reversed;
+                             prop_brake_active = 0;
+                             return_to_center = 0;
+                         }
+                     }
+                     if (prop_brake_active == 0) {
+                         return_to_center = 0;
+                         adjusted_input = ((newinput - 1048) * 2 + 47) - reversing_dead_band;
+                     }
+                     }
+                     if (newinput <= 1047 && newinput > 47) {
+                     if (forward == (1 - eepromBuffer.dir_reversed)) {
+                         adjusted_input = 0;
+                         prop_brake_active = 1;
+                         if (return_to_center) {
+                             forward = eepromBuffer.dir_reversed;
+                             prop_brake_active = 0;
+                             return_to_center = 0;
+                         }
+                     }
+                     if (prop_brake_active == 0) {
+                         return_to_center = 0;
+                         adjusted_input = ((newinput - 48) * 2 + 47) - reversing_dead_band;
+                     }
+                     }
+                     if (newinput < 48) {
+                     adjusted_input = 0;
+                     if (prop_brake_active) {
+                         prop_brake_active = 0;
+                         return_to_center = 1;
+                     }
+                 }
+                         } else {
             if (newinput > 1047) {
 
                 if (forward == eepromBuffer.dir_reversed) {
@@ -1024,7 +1053,7 @@ void setInput()
                         old_routine = 1;
                         maskPhaseInterrupts();
                         brushed_direction_set = 0;
-                    } else {
+                     } else {
                         newinput = 0;
                     }
                 }
@@ -1038,7 +1067,7 @@ void setInput()
                         forward = eepromBuffer.dir_reversed;
                         maskPhaseInterrupts();
                         brushed_direction_set = 0;
-                    } else {
+                     } else {
                         newinput = 0;
                     }
                 }
@@ -1047,6 +1076,7 @@ void setInput()
             if (newinput < 48) {
                 adjusted_input = 0;
                 brushed_direction_set = 0;
+                }
             }
         }
     } else {
@@ -1059,9 +1089,7 @@ void setInput()
         input = 0;
         bemf_timeout_happened = 102;
 #ifdef USE_RGB_LED
-        GPIOB->BRR = LL_GPIO_PIN_8; // on red
-        GPIOB->BSRR = LL_GPIO_PIN_5; //
-        GPIOB->BSRR = LL_GPIO_PIN_3;
+        setIndividualRGBLed(1, 0, 0);
 #endif
     } else {
 #ifdef FIXED_DUTY_MODE
@@ -1175,8 +1203,14 @@ if (!stepper_sine && armed) {
                 }
                 if (eepromBuffer.rc_car_reverse && prop_brake_active) {
 #ifndef PWM_ENABLE_BRIDGE
-                    prop_brake_duty_cycle = (getAbsDif(1000, newinput) + 1000);
+
+                  if (dshot == 0) prop_brake_duty_cycle = (getAbsDif(1000, newinput) + 1000);
+                    if (dshot)  {
+                        if (newinput <= 1047 && newinput > 47) prop_brake_duty_cycle = ((newinput - 48) * 2 + 47) - reversing_dead_band;
+                        if (newinput > 1047) prop_brake_duty_cycle = ((newinput - 1048) * 2 + 47) - reversing_dead_band;
+                    }
                     if (prop_brake_duty_cycle >= (1999)) {
+
                         fullBrake();
                     } else {
                         proportionalBrake();
@@ -1278,9 +1312,7 @@ void tenKhzRoutine()
                             send_LED_RGB(0, 255, 0);
 #endif
 #ifdef USE_RGB_LED
-                            GPIOB->BRR = LL_GPIO_PIN_3; // turn on green
-                            GPIOB->BSRR = LL_GPIO_PIN_8; // turn on green
-                            GPIOB->BSRR = LL_GPIO_PIN_5;
+                            setIndividualRGBLed(0,1,0);
 #endif
                             if ((cell_count == 0) && eepromBuffer.low_voltage_cut_off == 1) {
                                 cell_count = battery_voltage / 370;
@@ -1296,7 +1328,7 @@ void tenKhzRoutine()
 															playInputTune();
 #endif
                             }
-                            if (!servoPwm) {
+                            if (!servoPwm && !dshot) {
                                 eepromBuffer.rc_car_reverse = 0;
                             }
                         } else {
@@ -1704,6 +1736,9 @@ int main(void)
 #endif
 #ifdef USE_LED_STRIP
     send_LED_RGB(125, 0, 0);
+#endif
+#ifdef USE_RGB_LED
+     setIndividualRGBLed(1,0,0);
 #endif
 
 #ifdef USE_CRSF_INPUT
